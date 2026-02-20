@@ -12,7 +12,7 @@ RAG/Agent 시스템의 로컬 개발부터 클라우드 배포까지 전 과정�
 ## 🎯 학습 목표
 
 1. ✅ RAG/Agent 시스템 구축 및 로컬 실행
-2. ✅ Docker 멀티 컨테이너 구성
+2. ✅ Docker 컨테이너화 및 멀티 컨테이너 구성
 3. ✅ AWS ECS/Fargate 배포
 4. ✅ GCP Cloud Run + Pinecone 배포
 5. ✅ CI/CD 파이프라인 구축
@@ -20,22 +20,25 @@ RAG/Agent 시스템의 로컬 개발부터 클라우드 배포까지 전 과정�
 
 ## 📚 강의 목차
 
-### Section 0: Docker & 환경변수 기초 (1.5h)
+### Section 0: Backend + Frontend 로컬 실행 (1.5h)
+- Python/uv 환경 설정, FastAPI 서버 실행, Frontend 연동, Pinecone 초기화
+
+### Section 1: Docker & 환경변수 기초 (1.5h)
 - 컨테이너 개념, Dockerfile, 환경변수 관리
 
-### Section 1: 멀티 컨테이너 로컬 구성 (1.5h)
+### Section 2: 멀티 컨테이너 로컬 구성 (1.5h)
 - docker-compose로 Backend + Frontend
 
-### Section 2: AWS ECS/Fargate 배포 (2h)
+### Section 3: AWS ECS/Fargate 배포 (2h)
 - ECR, Task Definition, ECS Service, ALB
 
-### Section 3: GCP Cloud Run + Pinecone (2h)
+### Section 4: GCP Cloud Run + Pinecone (2h)
 - Artifact Registry, Cloud Run, Pinecone 인덱스 운영
 
-### Section 4: CI/CD 파이프라인 (1.5h)
+### Section 5: CI/CD 파이프라인 (1.5h)
 - GitHub Actions로 AWS/GCP 자동 배포
 
-### Section 5: 실전 운영 (1.5h)
+### Section 6: 실전 운영 (1.5h)
 - 비용 최적화, Auto Scaling, 로깅/모니터링, 보안
 
 ## 🛠️ 개발 환경 설정
