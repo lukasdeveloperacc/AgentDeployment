@@ -14,10 +14,9 @@ RAG/Agent 시스템의 로컬 개발부터 클라우드 배포까지 전 과정�
 1. ✅ RAG/Agent 시스템 구축 및 로컬 실행
 2. ✅ Docker 컨테이너화 및 멀티 컨테이너 구성
 3. ✅ AWS ECS/Fargate 배포
-4. ✅ GCP Cloud Run + Pinecone 배포
-5. ✅ CI/CD 파이프라인 구축
-6. ✅ Terraform 인프라 관리 (AWS + GCP)
-7. ✅ 실전 운영 (비용 최적화, 모니터링, Auto Scaling)
+4. ✅ Terraform 인프라 코드화 (AWS)
+5. ✅ CI/CD 파이프라인 구축 (앱 + 인프라 자동화)
+6. ✅ 실전 운영 (비용 최적화, 모니터링)
 
 ## 📚 강의 목차
 
@@ -33,19 +32,15 @@ RAG/Agent 시스템의 로컬 개발부터 클라우드 배포까지 전 과정�
 ### Section 3: AWS ECS/Fargate 배포 (2h)
 - ECR, Task Definition, ECS Service, ALB
 
-### Section 4: GCP Cloud Run + Pinecone (2h)
-- Artifact Registry, Cloud Run, Pinecone 인덱스 운영
-
-### Section 5: CI/CD 파이프라인 (1.5h)
-- GitHub Actions로 AWS/GCP 자동 배포
-
-### Section 6: Terraform으로 인프라 관리 (2h)
+### Section 4: Terraform으로 인프라 관리 (2h)
 - Terraform 기초 (HCL, state, plan/apply)
-- AWS 인프라 코드화 (ECS, ALB, ECR)
-- GCP 인프라 코드화 (Cloud Run, Artifact Registry)
+- AWS 인프라 코드화 (ECS, ALB, ECR, IAM)
 
-### Section 7: 실전 운영 (1.5h)
-- 비용 최적화, Auto Scaling, 로깅/모니터링, 보안
+### Section 5: CI/CD 파이프라인 (2h)
+- GitHub Actions로 앱 배포 + Terraform 인프라 자동화
+
+### Section 6: 실전 운영 (1.5h)
+- 비용 최적화, 모니터링
 
 ## 🛠️ 개발 환경 설정
 
