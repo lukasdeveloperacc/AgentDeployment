@@ -16,8 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
-import chromadb
+from langchain_pinecone import PineconeVectorStore
 
 # 환경변수 로드
 load_dotenv()
@@ -63,31 +62,30 @@ def mask_api_key(key: str) -> str:
     return f"{key[:7]}***"
 
 
-# ChromaDB 초기화
-def init_chromadb():
-    """ChromaDB VectorStore 초기화 (로컬 파일 기반)"""
+# Pinecone 초기화
+def init_pinecone():
+    """Pinecone VectorStore 초기화 (클라우드 매니지드)"""
     global vectorstore
 
     try:
-        chroma_dir = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+        index_name = os.getenv("PINECONE_INDEX_NAME", "ai-service-docs")
 
         # Embeddings 모델 초기화
         embeddings = OpenAIEmbeddings(
             model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
         )
 
-        # VectorStore 초기화 (로컬 파일)
-        vectorstore = Chroma(
-            persist_directory=chroma_dir,
-            collection_name="ai_service_docs",
-            embedding_function=embeddings
+        # VectorStore 초기화 (Pinecone)
+        vectorstore = PineconeVectorStore(
+            index_name=index_name,
+            embedding=embeddings
         )
 
-        logger.info(f"ChromaDB initialized: {chroma_dir}", extra={"trace_id": "init"})
+        logger.info(f"Pinecone initialized: {index_name}", extra={"trace_id": "init"})
         return True
 
     except Exception as e:
-        logger.error(f"ChromaDB initialization failed: {e}", extra={"trace_id": "init"})
+        logger.error(f"Pinecone initialization failed: {e}", extra={"trace_id": "init"})
         return False
 
 
@@ -128,9 +126,9 @@ async def startup_event():
     if not init_llm():
         logger.error("Failed to initialize LLM - check OPENAI_API_KEY", extra={"trace_id": "startup"})
 
-    # ChromaDB 초기화 (선택적 - 없어도 /ask 엔드포인트는 동작)
-    if not init_chromadb():
-        logger.warning("ChromaDB not available - RAG endpoints will fail", extra={"trace_id": "startup"})
+    # Pinecone 초기화 (선택적 - 없어도 /ask 엔드포인트는 동작)
+    if not init_pinecone():
+        logger.warning("Pinecone not available - RAG endpoints will fail", extra={"trace_id": "startup"})
 
     logger.info("Application started successfully", extra={"trace_id": "startup"})
 
@@ -225,7 +223,7 @@ async def ask_llm(request: QuestionRequest):
 async def rag_answer(request: QuestionRequest):
     """
     RAG 기반 질문 응답 (Streaming)
-    - ChromaDB에서 관련 문서 검색
+    - Pinecone에서 관련 문서 검색
     - 검색 결과를 컨텍스트로 LLM 답변 생성
     - 근거 문서 출처 포함
     """
@@ -237,7 +235,7 @@ async def rag_answer(request: QuestionRequest):
     )
 
     if not vectorstore:
-        raise HTTPException(status_code=503, detail="ChromaDB not initialized")
+        raise HTTPException(status_code=503, detail="Pinecone not initialized")
 
     if not llm:
         raise HTTPException(status_code=503, detail="LLM not initialized")
@@ -245,7 +243,7 @@ async def rag_answer(request: QuestionRequest):
     async def event_generator() -> AsyncGenerator[str, None]:
         """SSE 이벤트 생성기"""
         try:
-            # ChromaDB에서 관련 문서 검색
+            # Pinecone에서 관련 문서 검색
             top_k = int(os.getenv("RAG_TOP_K", "3"))
             docs = vectorstore.similarity_search(request.question, k=top_k)
 

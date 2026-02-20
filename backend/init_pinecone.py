@@ -1,6 +1,6 @@
 """
-ChromaDB 초기화 스크립트
-AI 서비스 기술 문서를 ChromaDB에 임베딩하여 저장
+Pinecone 초기화 스크립트
+AI 서비스 기술 문서를 Pinecone에 임베딩하여 저장
 """
 
 import os
@@ -8,10 +8,10 @@ import glob
 from dotenv import load_dotenv
 
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_pinecone import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
-import chromadb
+from pinecone import Pinecone, ServerlessSpec
 
 # 환경변수 로드
 load_dotenv()
@@ -85,11 +85,11 @@ def split_documents(documents: list[Document], chunk_size: int = 1000, chunk_ove
     return splits
 
 
-def init_chromadb():
-    """ChromaDB에 문서 임베딩 및 저장 (로컬 파일 기반)"""
+def init_pinecone():
+    """Pinecone에 문서 임베딩 및 저장 (클라우드 매니지드)"""
 
     print("=" * 60)
-    print("ChromaDB 초기화 시작 (로컬 파일 모드)")
+    print("Pinecone 초기화 시작 (클라우드 매니지드)")
     print("=" * 60)
 
     # 1. API 키 확인
@@ -101,9 +101,32 @@ def init_chromadb():
 
     print(f"✓ OpenAI API Key: {api_key[:7]}***")
 
-    # 2. ChromaDB 로컬 디렉토리 설정
-    chroma_dir = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-    print(f"\n✓ ChromaDB persist directory: {chroma_dir}")
+    pinecone_api_key = os.getenv("PINECONE_API_KEY")
+    if not pinecone_api_key:
+        print("✗ Error: PINECONE_API_KEY not found in environment")
+        print("  Please create .env file with PINECONE_API_KEY")
+        return False
+
+    print(f"✓ Pinecone API Key: {pinecone_api_key[:7]}***")
+
+    index_name = os.getenv("PINECONE_INDEX_NAME", "ai-service-docs")
+    print(f"✓ Pinecone Index Name: {index_name}")
+
+    # 2. Pinecone 인덱스 확인 및 생성
+    pc = Pinecone(api_key=pinecone_api_key)
+
+    existing_indexes = [idx.name for idx in pc.list_indexes()]
+    if index_name not in existing_indexes:
+        print(f"\n✓ Creating Pinecone index '{index_name}'...")
+        pc.create_index(
+            name=index_name,
+            dimension=1536,
+            metric="cosine",
+            spec=ServerlessSpec(cloud="aws", region="us-east-1")
+        )
+        print(f"✓ Index '{index_name}' created successfully")
+    else:
+        print(f"\n✓ Index '{index_name}' already exists")
 
     # 3. 문서 로드
     documents = load_documents_from_markdown("./docs")
@@ -121,18 +144,17 @@ def init_chromadb():
         model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     )
 
-    # 6. ChromaDB에 저장 (로컬 파일 기반)
-    print(f"\n✓ Creating ChromaDB collection 'ai_service_docs'...")
+    # 6. Pinecone에 저장
+    print(f"\n✓ Storing documents in Pinecone index '{index_name}'...")
 
     try:
-        vectorstore = Chroma.from_documents(
+        vectorstore = PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embeddings,
-            persist_directory=chroma_dir,
-            collection_name="ai_service_docs"
+            index_name=index_name
         )
 
-        print(f"✓ Successfully stored {len(chunks)} chunks in {chroma_dir}")
+        print(f"✓ Successfully stored {len(chunks)} chunks in Pinecone")
 
     except Exception as e:
         print(f"✗ Failed to create vectorstore: {e}")
@@ -154,17 +176,17 @@ def init_chromadb():
         print(f"    Content: {doc.page_content[:150]}...")
 
     print("\n" + "=" * 60)
-    print("ChromaDB 초기화 완료!")
+    print("Pinecone 초기화 완료!")
     print("=" * 60)
 
     return True
 
 
 if __name__ == "__main__":
-    success = init_chromadb()
+    success = init_pinecone()
 
     if success:
-        print("\n✓ ChromaDB is ready for RAG queries")
+        print("\n✓ Pinecone is ready for RAG queries")
     else:
-        print("\n✗ ChromaDB initialization failed")
+        print("\n✗ Pinecone initialization failed")
         exit(1)

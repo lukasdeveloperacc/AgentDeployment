@@ -24,7 +24,7 @@ RAG/Agent 시스템의 로컬 개발부터 클라우드 배포까지 전 과정�
 AgentDeployment/
 ├── backend/              # FastAPI RAG/Agent 백엔드
 │   ├── app.py           # FastAPI 메인 애플리케이션
-│   ├── init_chroma.py   # ChromaDB 초기화
+│   ├── init_pinecone.py # Pinecone 초기화
 │   ├── pyproject.toml   # uv 패키지 관리
 │   ├── .env.example     # 환경변수 템플릿
 │   └── docs/            # RAG용 샘플 문서 5개
@@ -48,13 +48,13 @@ cd backend
 
 # .env 파일 생성 및 API Key 입력
 cp .env.example .env
-# .env 파일 열어서 OPENAI_API_KEY 입력
+# .env 파일 열어서 OPENAI_API_KEY, PINECONE_API_KEY 입력
 
 # uv 의존성 설치
 uv sync
 
-# ChromaDB 초기화
-uv run python init_chroma.py
+# Pinecone 초기화
+uv run python init_pinecone.py
 
 # FastAPI 서버 실행
 uv run uvicorn app:app --reload --port 8000
@@ -83,7 +83,7 @@ http-server -p 3000 -c-1
 - **Python 3.11+** / **uv** (패키지 관리)
 - **FastAPI** (비동기 웹 프레임워크)
 - **LangChain / LangGraph** (LLM 체인 & Agent)
-- **ChromaDB** (로컬 Vector Database)
+- **Pinecone** (Managed Vector Database)
 - **OpenAI API** (LLM & Embedding)
 
 ### Frontend
@@ -100,7 +100,7 @@ http-server -p 3000 -c-1
    - 실시간 Streaming
 
 2. **RAG 탭**: 문서 검색 기반 답변
-   - ChromaDB에서 관련 문서 검색
+   - Pinecone에서 관련 문서 검색
    - 검색 결과 + LLM 답변 생성
    - 출처 문서 표시
 
@@ -116,19 +116,17 @@ http-server -p 3000 -c-1
 
 ## 📚 강의 목차
 
-상세 목차는 `lecture_requirements/강의목차_확정안.md` 참조
-
 ### Section 0: Docker & 환경변수 기초 (1.5h)
 - 컨테이너 개념, Dockerfile, 환경변수 관리
 
 ### Section 1: 멀티 컨테이너 로컬 구성 (1.5h)
-- docker-compose로 Backend + Frontend + ChromaDB
+- docker-compose로 Backend + Frontend
 
 ### Section 2: AWS ECS/Fargate 배포 (2h)
 - ECR, Task Definition, ECS Service, ALB
 
 ### Section 3: GCP Cloud Run + Pinecone (2h)
-- Artifact Registry, Cloud Run, ChromaDB → Pinecone 마이그레이션
+- Artifact Registry, Cloud Run, Pinecone 인덱스 운영
 
 ### Section 4: CI/CD 파이프라인 (1.5h)
 - GitHub Actions로 AWS/GCP 자동 배포
@@ -143,6 +141,7 @@ http-server -p 3000 -c-1
 - **Python 3.11+** 설치
 - **uv** 설치: https://docs.astral.sh/uv/
 - **OpenAI API Key**: https://platform.openai.com/api-keys
+- **Pinecone API Key**: https://app.pinecone.io/
 - **Git** 설치
 
 ### 추천 도구
@@ -158,8 +157,9 @@ http-server -p 3000 -c-1
 # OpenAI API Key (필수!)
 OPENAI_API_KEY=sk-proj-your-key-here
 
-# ChromaDB 로컬 저장소
-CHROMA_PERSIST_DIR=./chroma_db
+# Pinecone 설정 (필수!)
+PINECONE_API_KEY=pc-your-key-here
+PINECONE_INDEX_NAME=ai-service-docs
 
 # LLM 설정
 LLM_MODEL=gpt-4o-mini
@@ -208,11 +208,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc
 ```
 
-**2. ChromaDB 초기화 실패**
+**2. Pinecone 연결 실패**
 ```bash
-# docs 디렉토리 확인
-ls backend/docs/
-# 5개 문서가 있어야 함
+# PINECONE_API_KEY 확인
+# Pinecone 콘솔에서 인덱스 상태 확인: https://app.pinecone.io/
 ```
 
 **3. OpenAI API Key 에러**
@@ -234,7 +233,7 @@ ls backend/docs/
 ### Backend
 - FastAPI: https://fastapi.tiangolo.com/
 - LangChain: https://python.langchain.com/
-- ChromaDB: https://docs.trychroma.com/
+- Pinecone: https://docs.pinecone.io/
 - uv: https://docs.astral.sh/uv/
 
 ### Frontend
@@ -247,7 +246,6 @@ ls backend/docs/
 ## ⚠️ 주의사항
 
 - `.env` 파일은 절대 Git에 커밋하지 마세요
-- `chroma_db/` 디렉토리는 자동 생성됩니다
 - API Key는 타인과 공유하지 마세요
 - 프로덕션 배포 시 환경변수는 Secrets Manager 사용
 
