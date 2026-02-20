@@ -35,3 +35,4 @@ docker-compose.override.yml
 requirements.md
 lecture_requirements/
 CLAUDE.md
+.claude/
