@@ -20,12 +20,30 @@ from langchain_pinecone import PineconeVectorStore
 # 환경변수 로드
 load_dotenv()
 
+
+# Custom Formatter: trace_id가 없으면 기본값 제공
+class TraceIdFormatter(logging.Formatter):
+    """trace_id가 없는 로그 레코드에 기본값을 제공"""
+    def format(self, record):
+        if not hasattr(record, 'trace_id'):
+            record.trace_id = 'N/A'
+        return super().format(record)
+
+
 # 로깅 설정 (JSON 포맷)
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"time": "%(asctime)s", "level": "%(levelname)s", "trace_id": "%(trace_id)s", "message": "%(message)s"}'
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Console handler with custom formatter
+handler = logging.StreamHandler()
+handler.setFormatter(TraceIdFormatter(
+    '{"time": "%(asctime)s", "level": "%(levelname)s", "trace_id": "%(trace_id)s", "message": "%(message)s"}'
+))
+logger.addHandler(handler)
+
+# Root logger에도 동일 formatter 적용 (httpx 등 외부 라이브러리용)
+logging.root.setLevel(logging.INFO)
+logging.root.addHandler(handler)
 
 # FastAPI 앱 생성
 app = FastAPI(
