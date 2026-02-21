@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
@@ -47,11 +46,6 @@ app.add_middleware(
 # 전역 변수
 vectorstore = None
 llm = None
-
-
-# Pydantic 모델
-class QuestionRequest(BaseModel):
-    question: str
 
 
 # API 키 마스킹 함수
@@ -155,8 +149,8 @@ async def readiness_check():
     }
 
 
-@app.post("/ask")
-async def ask_llm(request: QuestionRequest):
+@app.get("/ask")
+async def ask_llm(question: str):
     """
     LLM API 직접 호출 (Streaming)
     - OpenAI API를 직접 호출하여 답변 생성
@@ -164,8 +158,11 @@ async def ask_llm(request: QuestionRequest):
     """
     trace_id = str(uuid.uuid4())
 
+    if not question or not question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
+
     logger.info(
-        f"[/ask] Question: {request.question[:50]}...",
+        f"[/ask] Question: {question[:50]}...",
         extra={"trace_id": trace_id}
     )
 
@@ -178,7 +175,7 @@ async def ask_llm(request: QuestionRequest):
             token_count = 0
 
             # LLM Streaming
-            async for chunk in llm.astream(request.question):
+            async for chunk in llm.astream(question):
                 if chunk.content:
                     token_count += 1
 
@@ -219,8 +216,8 @@ async def ask_llm(request: QuestionRequest):
     )
 
 
-@app.post("/rag")
-async def rag_answer(request: QuestionRequest):
+@app.get("/rag")
+async def rag_answer(question: str):
     """
     RAG 기반 질문 응답 (Streaming)
     - Pinecone에서 관련 문서 검색
@@ -229,8 +226,11 @@ async def rag_answer(request: QuestionRequest):
     """
     trace_id = str(uuid.uuid4())
 
+    if not question or not question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
+
     logger.info(
-        f"[/rag] Question: {request.question[:50]}...",
+        f"[/rag] Question: {question[:50]}...",
         extra={"trace_id": trace_id}
     )
 
@@ -245,7 +245,7 @@ async def rag_answer(request: QuestionRequest):
         try:
             # Pinecone에서 관련 문서 검색
             top_k = int(os.getenv("RAG_TOP_K", "3"))
-            docs = vectorstore.similarity_search(request.question, k=top_k)
+            docs = vectorstore.similarity_search(question, k=top_k)
 
             # 검색된 문서 출처 전송
             sources = [{"content": doc.page_content[:200], "metadata": doc.metadata} for doc in docs]
@@ -260,7 +260,7 @@ async def rag_answer(request: QuestionRequest):
 문서:
 {context}
 
-질문: {request.question}
+질문: {question}
 
 답변:"""
 
@@ -305,8 +305,8 @@ async def rag_answer(request: QuestionRequest):
     )
 
 
-@app.post("/agent")
-async def agent_answer(request: QuestionRequest):
+@app.get("/agent")
+async def agent_answer(question: str):
     """
     LangGraph Agent 실행 (Streaming)
     - Step 1: 질문 분류 (RAG 필요 vs LLM 직접 답변)
@@ -317,8 +317,11 @@ async def agent_answer(request: QuestionRequest):
     """
     trace_id = str(uuid.uuid4())
 
+    if not question or not question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
+
     logger.info(
-        f"[/agent] Question: {request.question[:50]}...",
+        f"[/agent] Question: {question[:50]}...",
         extra={"trace_id": trace_id}
     )
 
@@ -334,7 +337,7 @@ async def agent_answer(request: QuestionRequest):
 - 기술 문서, 내부 자료, 특정 도메인 지식이 필요한 질문 → "RAG"
 - 일반 상식, 간단한 질문 → "DIRECT"
 
-질문: {request.question}
+질문: {question}
 
 "RAG" 또는 "DIRECT" 중 하나만 답하세요 (다른 설명 없이):"""
 
@@ -358,7 +361,7 @@ async def agent_answer(request: QuestionRequest):
             if classification == "RAG" and vectorstore:
                 # RAG 경로
                 top_k = int(os.getenv("RAG_TOP_K", "3"))
-                docs = vectorstore.similarity_search(request.question, k=top_k)
+                docs = vectorstore.similarity_search(question, k=top_k)
 
                 sources = [{"content": doc.page_content[:200], "metadata": doc.metadata} for doc in docs]
                 yield f"data: {json.dumps({'type': 'sources', 'data': sources, 'trace_id': trace_id})}\n\n"
@@ -369,12 +372,12 @@ async def agent_answer(request: QuestionRequest):
 문서:
 {context}
 
-질문: {request.question}
+질문: {question}
 
 답변:"""
             else:
                 # Direct LLM 경로
-                prompt = request.question
+                prompt = question
 
             # LLM Streaming
             token_count = 0
