@@ -129,9 +129,24 @@ const API_BASE_URL = 'http://localhost:8000';
 
 ## 🔧 트러블슈팅
 
-### 1. CORS 에러
+### 1. EventSource와 Backend 통신 방식
+
+**현재 구현 방식**:
+- Frontend: `EventSource` API 사용 (GET 방식으로 쿼리 파라미터 전달)
+  ```javascript
+  const eventSource = new EventSource(`${url}?question=${encodeURIComponent(question)}`);
+  ```
+- Backend: `POST` 메서드로 JSON Body 수신
+  ```python
+  @app.post("/ask")
+  async def ask_llm(request: QuestionRequest):
+  ```
+
+> **참고**: EventSource는 GET만 지원하므로, Backend가 POST를 요구하는 경우 코드 수정이 필요할 수 있습니다. 현재는 쿼리 파라미터 방식으로 작동하도록 구현되어 있습니다.
+
+### 2. CORS 에러
 ```
-Access to fetch at 'http://localhost:8000/ask' from origin 'http://localhost:3000' has been blocked by CORS policy
+Access to EventSource at 'http://localhost:8000/ask' from origin 'http://localhost:3000' has been blocked by CORS policy
 ```
 
 **해결**:
@@ -141,9 +156,9 @@ Access to fetch at 'http://localhost:8000/ask' from origin 'http://localhost:300
   ```
 - Frontend를 다른 포트로 실행 중이라면 해당 포트 추가
 
-### 2. Backend 연결 실패
+### 3. Backend 연결 실패
 ```
-TypeError: Failed to fetch
+EventSource's response has a MIME type ("application/json") that is not "text/event-stream"
 ```
 
 **해결**:
@@ -151,28 +166,40 @@ TypeError: Failed to fetch
   ```bash
   curl http://localhost:8000/health
   ```
+- Backend가 `text/event-stream` MIME 타입으로 응답하는지 확인
 - `app.js`의 `API_BASE_URL` 확인
 
-### 3. Streaming이 작동하지 않음
+### 4. Streaming이 작동하지 않음
 
 **해결**:
 - 브라우저 개발자 도구 (F12) → Console 확인
-- EventSource 지연 로그 확인
-- Network 탭에서 SSE 연결 상태 확인
+- EventSource 연결 상태 확인
+  ```javascript
+  eventSource.readyState
+  // 0: CONNECTING, 1: OPEN, 2: CLOSED
+  ```
+- Network 탭에서 SSE 연결 상태 및 응답 형식 확인
+- Backend 로그에서 에러 메시지 확인
 
-### 4. 빈 응답
+### 5. 빈 응답
 ```
 응답:
 (아무것도 표시 안 됨)
 ```
 
 **해결**:
-- Backend에서 ChromaDB 초기화 확인
+- Backend에서 Pinecone 초기화 확인 (RAG/Agent 탭의 경우)
   ```bash
   cd ../backend
-  uv run python init_chroma.py
+  # Pinecone 인덱스가 생성되어 있는지 확인
   ```
 - Backend 로그 확인
+- `/ask` 엔드포인트 테스트 (Pinecone 없이 작동)
+  ```bash
+  curl -X POST "http://localhost:8000/ask" \
+    -H "Content-Type: application/json" \
+    -d '{"question": "안녕하세요"}'
+  ```
 
 ## 📚 다음 단계
 
@@ -183,22 +210,46 @@ TypeError: Failed to fetch
 ## 💡 학습 포인트
 
 ### EventSource (SSE) 사용법
+
+#### 1. GET 방식 (현재 구현)
 ```javascript
-const eventSource = new EventSource('http://localhost:8000/ask?question=안녕');
+// 쿼리 파라미터로 데이터 전달 (EventSource는 GET만 지원)
+const eventSource = new EventSource('http://localhost:8000/ask?question=' + encodeURIComponent('안녕'));
 
 eventSource.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    console.log(data);
+
+    // 이벤트 타입별 처리
+    switch (data.type) {
+        case 'token':
+            console.log('Token:', data.content);
+            break;
+        case 'done':
+            console.log('완료');
+            eventSource.close();
+            break;
+        case 'error':
+            console.error('에러:', data.message);
+            eventSource.close();
+            break;
+    }
 };
 
 eventSource.onerror = (error) => {
     console.error('SSE Error:', error);
-    eventSource.close();
+
+    if (eventSource.readyState === EventSource.CLOSED) {
+        console.log('연결 종료됨');
+    }
 };
+
+// 연결 종료
+eventSource.close();
 ```
 
-### Fetch API와 SSE 조합 (POST)
+#### 2. POST + ReadableStream 방식 (대안)
 ```javascript
+// POST 요청으로 SSE 수신 (EventSource 대신 Fetch 사용)
 const response = await fetch('http://localhost:8000/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -213,16 +264,36 @@ while (true) {
     if (done) break;
 
     const chunk = decoder.decode(value);
+
     // SSE 형식 파싱: "data: {...}\n\n"
-    console.log(chunk);
+    const lines = chunk.split('\n');
+    for (const line of lines) {
+        if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            console.log(data);
+        }
+    }
 }
 ```
 
+### SSE 이벤트 형식
+```
+data: {"type": "token", "content": "안녕", "trace_id": "abc123"}
+
+data: {"type": "done", "trace_id": "abc123"}
+
+```
+
+> **참고**: SSE는 각 메시지가 `data: ` 접두사로 시작하고 빈 줄(`\n\n`)로 구분됩니다.
+
 ## ⚠️ 주의사항
 
-- Backend 서버를 먼저 실행해야 합니다
-- CORS 설정이 올바른지 확인하세요
-- 브라우저의 EventSource는 GET만 지원합니다 (POST는 Fetch 사용)
+- **Backend 서버를 먼저 실행**해야 합니다 (`../backend` 디렉토리)
+- **CORS 설정**이 올바른지 확인하세요 (Backend `.env` 파일)
+- **EventSource는 GET만 지원**합니다
+  - 쿼리 파라미터로 데이터 전달 (URL 길이 제한 주의)
+  - POST가 필요한 경우 Fetch API + ReadableStream 사용
+- **브라우저 호환성**: 최신 브라우저 사용 (EventSource 지원 확인)
 
 ## 📖 참고 자료
 

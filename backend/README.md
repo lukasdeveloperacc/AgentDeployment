@@ -5,7 +5,7 @@ AI 서비스 통합 & 배포 강의를 위한 RAG/Agent 데모 백엔드입니�
 ## 📋 주요 기능
 
 - **LLM 직접 호출**: OpenAI API로 일반 질문 응답
-- **RAG (Retrieval-Augmented Generation)**: ChromaDB 기반 문서 검색 및 답변 생성
+- **RAG (Retrieval-Augmented Generation)**: Pinecone 기반 문서 검색 및 답변 생성
 - **LangGraph Agent**: 질문 분류 → RAG/LLM 자동 선택
 - **Streaming 응답**: Server-Sent Events (SSE) 기반 실시간 스트리밍
 
@@ -14,7 +14,7 @@ AI 서비스 통합 & 배포 강의를 위한 RAG/Agent 데모 백엔드입니�
 - **Python 3.11+**
 - **FastAPI**: 비동기 웹 프레임워크
 - **LangChain / LangGraph**: LLM 체인 및 Agent 구성
-- **ChromaDB**: 로컬 Vector Database
+- **Pinecone**: 클라우드 Vector Database (Managed Service)
 - **OpenAI API**: LLM 및 Embedding
 
 ## 📁 프로젝트 구조
@@ -22,17 +22,16 @@ AI 서비스 통합 & 배포 강의를 위한 RAG/Agent 데모 백엔드입니�
 ```
 backend/
 ├─ app.py                 # FastAPI 메인 애플리케이션
-├─ init_chroma.py         # ChromaDB 초기화 스크립트
+├─ init_pinecone.py       # Pinecone 초기화 스크립트
 ├─ pyproject.toml         # uv 패키지 관리 설정
 ├─ .env.example           # 환경변수 템플릿
 ├─ .env                   # 실제 환경변수 (Git 제외)
-├─ docs/                  # RAG용 샘플 문서 5개
-│  ├─ 01_RAG_기초.md
-│  ├─ 02_Vector_Database.md
-│  ├─ 03_LangGraph_Agent.md
-│  ├─ 04_Streaming_SSE.md
-│  └─ 05_환경변수_관리.md
-└─ chroma_db/             # ChromaDB 로컬 저장소 (자동 생성)
+└─ docs/                  # RAG용 샘플 문서 (선택사항)
+   ├─ 01_RAG_기초.md
+   ├─ 02_Vector_Database.md
+   ├─ 03_LangGraph_Agent.md
+   ├─ 04_Streaming_SSE.md
+   └─ 05_환경변수_관리.md
 ```
 
 ## 🚀 로컬 실행 방법
@@ -49,6 +48,7 @@ backend/
   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
   ```
 - **OpenAI API Key** 발급: https://platform.openai.com/api-keys
+- **Pinecone API Key** 발급: https://app.pinecone.io/ (무료 Starter 플랜 사용 가능)
 
 ### 1. 환경변수 설정
 
@@ -69,8 +69,9 @@ notepad .env
 # OpenAI API Key (필수!)
 OPENAI_API_KEY=sk-proj-your-actual-api-key-here
 
-# ChromaDB 설정
-CHROMA_PERSIST_DIR=./chroma_db
+# Pinecone 설정 (RAG 사용 시 필수)
+PINECONE_API_KEY=your-pinecone-api-key-here
+PINECONE_INDEX_NAME=ai-service-docs
 
 # LLM 설정
 LLM_MODEL=gpt-4o-mini
@@ -85,6 +86,8 @@ EMBEDDING_MODEL=text-embedding-3-small
 CORS_ORIGINS=http://localhost:3000
 ```
 
+> **참고**: `/ask` 엔드포인트는 Pinecone 없이도 작동합니다. RAG 기능(`/rag`, `/agent`)을 사용하려면 Pinecone 설정이 필요합니다.
+
 ### 2. 의존성 설치
 
 ```bash
@@ -92,51 +95,59 @@ CORS_ORIGINS=http://localhost:3000
 uv sync
 ```
 
-### 3. ChromaDB 초기화
+### 3. Pinecone 초기화 (RAG 사용 시)
+
+#### 3-1. Pinecone 인덱스 생성
+
+1. **Pinecone 콘솔** 접속: https://app.pinecone.io/
+2. **Create Index** 클릭
+3. 설정:
+   - **Index Name**: `ai-service-docs` (또는 `.env`의 `PINECONE_INDEX_NAME`과 동일하게)
+   - **Dimensions**: `1536` (OpenAI text-embedding-3-small 기준)
+   - **Metric**: `cosine`
+   - **Region**: 가까운 지역 선택 (예: `us-east-1`)
+   - **Plan**: Starter (무료)
+4. **Create Index** 완료
+
+#### 3-2. 문서 임베딩 업로드 (선택사항)
 
 ```bash
-# ChromaDB에 샘플 문서 임베딩
-uv run python init_chroma.py
+# Pinecone에 샘플 문서 임베딩 (docs/ 디렉토리 필요)
+uv run python init_pinecone.py
 ```
 
 **예상 출력**:
 ```
 ============================================================
-ChromaDB 초기화 시작 (로컬 파일 모드)
+Pinecone 초기화 시작
 ============================================================
 ✓ OpenAI API Key: sk-proj***
-✓ ChromaDB persist directory: ./chroma_db
+✓ Pinecone API Key: pcsk***
+✓ Pinecone Index: ai-service-docs
 
 Found 5 markdown files in ./docs
 ✓ Loaded: 01_RAG_기초.md (8234 characters)
 ✓ Loaded: 02_Vector_Database.md (7512 characters)
-✓ Loaded: 03_LangGraph_Agent.md (9821 characters)
-✓ Loaded: 04_Streaming_SSE.md (8934 characters)
-✓ Loaded: 05_환경변수_관리.md (7123 characters)
+...
 
 ✓ Split 5 documents into 42 chunks
-
-✓ Initializing OpenAI Embeddings...
-✓ Creating ChromaDB collection 'ai_service_docs'...
-✓ Successfully stored 42 chunks in ./chroma_db
+✓ Successfully uploaded 42 embeddings to Pinecone
 
 ============================================================
 검증 테스트
 ============================================================
 Test Query: RAG란 무엇인가요?
 
-✓ Retrieved 2 documents:
+✓ Retrieved 3 documents from Pinecone
 [1] Source: 01_RAG_기초.md
-    Content: RAG (Retrieval-Augmented Generation) 기초
-
-## RAG란 무엇인가?
-
-RAG(Retrieval-Augmented Generation)는 **검색 증강 생성**을 의미하며...
+    Content: RAG (Retrieval-Augmented Generation) 기초...
 
 ============================================================
-ChromaDB 초기화 완료!
+Pinecone 초기화 완료!
 ============================================================
 ```
+
+> **주의**: `init_pinecone.py` 스크립트가 없는 경우, Pinecone 대시보드에서 직접 문서를 업로드하거나 `/rag`, `/agent` 엔드포인트 없이 `/ask`만 사용할 수 있습니다.
 
 ### 4. FastAPI 서버 실행
 
@@ -153,10 +164,12 @@ INFO:     Started server process [12346]
 INFO:     Waiting for application startup.
 {"time": "2024-02-16 10:00:00", "level": "INFO", "trace_id": "startup", "message": "Application starting..."}
 {"time": "2024-02-16 10:00:00", "level": "INFO", "trace_id": "init", "message": "LLM initialized: gpt-4o-mini, API Key: sk-proj***"}
-{"time": "2024-02-16 10:00:00", "level": "INFO", "trace_id": "init", "message": "ChromaDB initialized: ./chroma_db"}
+{"time": "2024-02-16 10:00:00", "level": "INFO", "trace_id": "init", "message": "Pinecone initialized: ai-service-docs"}
 {"time": "2024-02-16 10:00:01", "level": "INFO", "trace_id": "startup", "message": "Application started successfully"}
 INFO:     Application startup complete.
 ```
+
+> **참고**: Pinecone 설정이 없어도 서버는 시작되며, `/ask` 엔드포인트는 정상 작동합니다.
 
 ### 5. 접속 및 테스트
 
@@ -227,21 +240,29 @@ source ~/.bashrc  # 또는 ~/.zshrc
 - `.env` 파일에 올바른 API Key 입력 확인
 - API Key가 `sk-proj-` 또는 `sk-`로 시작하는지 확인
 
-### 3. ChromaDB 초기화 실패
+### 3. Pinecone 연결 실패
 ```
-✗ No documents found in ./docs directory
+✗ Error: Pinecone initialization failed
 ```
 
 **해결**:
-```bash
-# docs 디렉토리 확인
-ls -la docs/
+- `.env` 파일에 `PINECONE_API_KEY` 확인
+- Pinecone 대시보드에서 인덱스 생성 확인
+- 인덱스 이름이 `.env`의 `PINECONE_INDEX_NAME`과 일치하는지 확인
+- 무료 플랜은 1개 인덱스만 생성 가능 (기존 인덱스 삭제 후 재생성)
 
-# 5개 문서가 있는지 확인
-# 없다면 프로젝트 다시 clone
+### 4. Embedding 차원 불일치
+```
+✗ Error: Dimension mismatch
 ```
 
-### 4. 포트 8000이 이미 사용 중
+**해결**:
+- Pinecone 인덱스 차원: `1536` (text-embedding-3-small)
+- 다른 모델 사용 시:
+  - `text-embedding-3-large`: 3072
+  - `text-embedding-ada-002`: 1536
+
+### 5. 포트 8000이 이미 사용 중
 ```bash
 # 다른 포트로 실행
 uv run uvicorn app:app --reload --port 8001
@@ -256,14 +277,15 @@ uv run uvicorn app:app --reload --port 8001
 ## ⚠️ 주의사항
 
 - `.env` 파일은 절대 Git에 커밋하지 마세요!
-- `chroma_db/` 디렉토리는 자동 생성되므로 삭제하지 마세요
 - API Key는 타인과 공유하지 마세요
+- Pinecone 무료 플랜은 1개 인덱스만 생성 가능합니다
+- `/ask` 엔드포인트는 Pinecone 없이도 작동합니다 (LLM 직접 호출)
 
 ## 📖 참고 자료
 
 - FastAPI 문서: https://fastapi.tiangolo.com/
 - LangChain 문서: https://python.langchain.com/
-- ChromaDB 문서: https://docs.trychroma.com/
+- Pinecone 문서: https://docs.pinecone.io/
 - uv 문서: https://docs.astral.sh/uv/
 
 ## 📄 라이센스
