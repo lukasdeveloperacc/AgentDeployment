@@ -9,6 +9,15 @@ RAG/Agent 시스템의 로컬 개발부터 클라우드 배포까지 전 과정�
 - **시간**: 30시간 녹화 → 14시간 편집본
 - **레벨**: 초급 ~ 중급
 
+## 📁 주요 파일
+
+- **[`section_details.md`](./section_details.md)**: 세부 커리큘럼 (클립 구성, 이론 파일, 체크리스트)
+- **[`lecture_requirements/RAG_Agent_Deployment_Curriculum.xlsx`](./lecture_requirements/RAG_Agent_Deployment_Curriculum.xlsx)**: 전체 커리큘럼 Excel (11개 시트)
+  - 0. 전체 개요
+  - Section 0~7 (각 섹션별 클립, 이론 파일, 실습)
+  - 이론 파일 목록 (51개 PDF)
+  - 완주 기준 (DoD)
+
 ## 🎯 학습 목표
 
 1. ✅ RAG/Agent 시스템 구축 및 로컬 실행 (Pinecone 연동)
@@ -89,7 +98,7 @@ RAG/Agent 시스템의 로컬 개발부터 클라우드 배포까지 전 과정�
 
 ### 📊 전체 통계
 - **총 시간**: 14시간
-- **이론 파일**: 51개 PDF
+- **이론 파일**: 51개 PPT
 - **실습 체크리스트**: Section별 완료 조건
 - **산출물**: 배포된 RAG/Agent 서비스 + 운영 문서
 
