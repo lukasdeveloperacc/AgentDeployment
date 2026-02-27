@@ -1,0 +1,63 @@
+# Cloud Run Backend Service 설정
+# gcloud run services replace cloud-run-backend.yaml
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: rag-backend
+  namespace: 'YOUR_PROJECT_ID'
+  labels:
+    cloud.googleapis.com/location: asia-northeast3
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: '0'
+        autoscaling.knative.dev/maxScale: '10'
+        run.googleapis.com/cpu-throttling: 'false'
+        run.googleapis.com/startup-cpu-boost: 'true'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: asia-northeast3-docker.pkg.dev/YOUR_PROJECT_ID/rag-demo/rag-backend:latest
+        ports:
+        - name: http1
+          containerPort: 8000
+        env:
+        - name: ENVIRONMENT
+          value: production
+        - name: LOG_LEVEL
+          value: INFO
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openai-api-key
+        - name: PINECONE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: pinecone-api-key
+        - name: PINECONE_INDEX_NAME
+          value: rag-demo-prod
+        resources:
+          limits:
+            cpu: '2'
+            memory: 2Gi
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 0
+          timeoutSeconds: 1
+          periodSeconds: 3
+          failureThreshold: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+  traffic:
+  - percent: 100
+    latestRevision: true

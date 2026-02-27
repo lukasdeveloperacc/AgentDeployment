@@ -1,0 +1,35 @@
+# Cloud Run Frontend Service 설정
+# gcloud run services replace cloud-run-frontend.yaml
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: rag-frontend
+  namespace: 'YOUR_PROJECT_ID'
+  labels:
+    cloud.googleapis.com/location: asia-northeast3
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: '0'
+        autoscaling.knative.dev/maxScale: '5'
+    spec:
+      containerConcurrency: 100
+      timeoutSeconds: 60
+      containers:
+      - image: asia-northeast3-docker.pkg.dev/YOUR_PROJECT_ID/rag-demo/rag-frontend:latest
+        ports:
+        - name: http1
+          containerPort: 80
+        resources:
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+  traffic:
+  - percent: 100
+    latestRevision: true
