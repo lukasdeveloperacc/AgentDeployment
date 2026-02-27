@@ -1,0 +1,283 @@
+# CloudWatch Alarms Configuration (AWS)
+aws_alarms:
+  # CPU Utilization
+  - name: rag-backend-high-cpu
+    description: "Alert when backend CPU exceeds 70%"
+    metric_name: CPUUtilization
+    namespace: AWS/ECS
+    statistic: Average
+    period: 300
+    threshold: 70
+    comparison: GreaterThanThreshold
+    evaluation_periods: 2
+    dimensions:
+      - name: ServiceName
+        value: rag-backend-service
+      - name: ClusterName
+        value: rag-demo-cluster
+    actions:
+      - send_to_sns: arn:aws:sns:ap-northeast-2:ACCOUNT_ID:devops-alerts
+
+  # Memory Utilization
+  - name: rag-backend-high-memory
+    description: "Alert when backend memory exceeds 80%"
+    metric_name: MemoryUtilization
+    namespace: AWS/ECS
+    statistic: Average
+    period: 300
+    threshold: 80
+    comparison: GreaterThanThreshold
+    evaluation_periods: 2
+    dimensions:
+      - name: ServiceName
+        value: rag-backend-service
+      - name: ClusterName
+        value: rag-demo-cluster
+    actions:
+      - send_to_sns: arn:aws:sns:ap-northeast-2:ACCOUNT_ID:devops-alerts
+
+  # Response Time
+  - name: rag-alb-high-response-time
+    description: "Alert when P99 response time exceeds 1000ms"
+    metric_name: TargetResponseTime
+    namespace: AWS/ApplicationELB
+    statistic: p99
+    period: 60
+    threshold: 1.0  # 1 second
+    comparison: GreaterThanThreshold
+    evaluation_periods: 3
+    dimensions:
+      - name: LoadBalancer
+        value: app/rag-demo-alb/xxx
+    actions:
+      - send_to_sns: arn:aws:sns:ap-northeast-2:ACCOUNT_ID:devops-alerts
+
+  # Error Rate
+  - name: rag-alb-high-error-rate
+    description: "Alert when 5XX error count exceeds 10"
+    metric_name: HTTPCode_Target_5XX_Count
+    namespace: AWS/ApplicationELB
+    statistic: Sum
+    period: 60
+    threshold: 10
+    comparison: GreaterThanThreshold
+    evaluation_periods: 1
+    dimensions:
+      - name: LoadBalancer
+        value: app/rag-demo-alb/xxx
+    actions:
+      - send_to_sns: arn:aws:sns:ap-northeast-2:ACCOUNT_ID:critical-alerts
+
+  # Service Unhealthy
+  - name: rag-backend-unhealthy-targets
+    description: "Alert when no healthy targets available"
+    metric_name: HealthyHostCount
+    namespace: AWS/ApplicationELB
+    statistic: Average
+    period: 60
+    threshold: 1
+    comparison: LessThanThreshold
+    evaluation_periods: 1
+    dimensions:
+      - name: TargetGroup
+        value: targetgroup/rag-backend-tg/xxx
+    actions:
+      - send_to_sns: arn:aws:sns:ap-northeast-2:ACCOUNT_ID:critical-alerts
+
+---
+
+# GCP Monitoring Alert Policies
+gcp_alerts:
+  # Uptime Check
+  - display_name: "RAG Backend Uptime Check"
+    type: uptime_check
+    config:
+      resource_type: uptime-url
+      host: "rag-backend-xyz.run.app"
+      path: "/health"
+      timeout: 10s
+      period: 60s
+      failure_threshold: 3
+    notification_channels:
+      - projects/PROJECT_ID/notificationChannels/EMAIL_CHANNEL
+
+  # High Error Rate
+  - display_name: "High 5XX Error Rate"
+    type: metric_threshold
+    conditions:
+      - display_name: "5XX error rate > 5%"
+        filter: |
+          resource.type="cloud_run_revision"
+          AND metric.type="run.googleapis.com/request_count"
+          AND metric.labels.response_code_class="5xx"
+        aggregations:
+          - alignment_period: 60s
+            per_series_aligner: ALIGN_RATE
+        comparison: COMPARISON_GT
+        threshold_value: 0.05
+        duration: 120s
+    notification_channels:
+      - projects/PROJECT_ID/notificationChannels/EMAIL_CHANNEL
+
+  # High Response Time
+  - display_name: "High Response Time"
+    type: metric_threshold
+    conditions:
+      - display_name: "P99 latency > 1000ms"
+        filter: |
+          resource.type="cloud_run_revision"
+          AND metric.type="run.googleapis.com/request_latencies"
+        aggregations:
+          - alignment_period: 60s
+            per_series_aligner: ALIGN_DELTA
+            cross_series_reducer: REDUCE_PERCENTILE_99
+        comparison: COMPARISON_GT
+        threshold_value: 1000
+        duration: 180s
+    notification_channels:
+      - projects/PROJECT_ID/notificationChannels/EMAIL_CHANNEL
+
+  # High Instance Count
+  - display_name: "Too Many Instances Running"
+    type: metric_threshold
+    conditions:
+      - display_name: "Instance count > 8"
+        filter: |
+          resource.type="cloud_run_revision"
+          AND metric.type="run.googleapis.com/container/instance_count"
+        aggregations:
+          - alignment_period: 60s
+            per_series_aligner: ALIGN_MAX
+        comparison: COMPARISON_GT
+        threshold_value: 8
+        duration: 300s
+    notification_channels:
+      - projects/PROJECT_ID/notificationChannels/EMAIL_CHANNEL
+
+  # Low Request Count (Traffic Drop)
+  - display_name: "Unusual Traffic Drop"
+    type: metric_threshold
+    conditions:
+      - display_name: "Request count dropped by 90%"
+        filter: |
+          resource.type="cloud_run_revision"
+          AND metric.type="run.googleapis.com/request_count"
+        aggregations:
+          - alignment_period: 300s
+            per_series_aligner: ALIGN_RATE
+        comparison: COMPARISON_LT
+        threshold_value: 1  # 1 request per second
+        duration: 600s
+    notification_channels:
+      - projects/PROJECT_ID/notificationChannels/EMAIL_CHANNEL
+
+---
+
+# Notification Channels Configuration
+notification_channels:
+  aws_sns:
+    - topic_name: devops-alerts
+      subscriptions:
+        - protocol: email
+          endpoint: devops@example.com
+        - protocol: sms
+          endpoint: "+821012345678"
+
+    - topic_name: critical-alerts
+      subscriptions:
+        - protocol: email
+          endpoint: oncall@example.com
+        - protocol: https
+          endpoint: https://hooks.slack.com/services/xxx/yyy/zzz
+
+  gcp_channels:
+    - display_name: "DevOps Email"
+      type: email
+      labels:
+        email_address: devops@example.com
+
+    - display_name: "On-Call Email"
+      type: email
+      labels:
+        email_address: oncall@example.com
+
+    - display_name: "Slack Webhook"
+      type: webhook_tokenauth
+      labels:
+        url: https://hooks.slack.com/services/xxx/yyy/zzz
+
+---
+
+# Alert Severity Levels
+severity_mapping:
+  critical:
+    description: "Service down, immediate action required"
+    response_time: "15 minutes"
+    examples:
+      - All instances unhealthy
+      - 100% error rate
+      - Complete service outage
+    notification: ["email", "sms", "slack", "pagerduty"]
+
+  high:
+    description: "Significant degradation, urgent action needed"
+    response_time: "1 hour"
+    examples:
+      - High error rate (> 5%)
+      - Slow response time (> 2s)
+      - Memory/CPU > 90%
+    notification: ["email", "slack"]
+
+  medium:
+    description: "Performance issues, action needed during business hours"
+    response_time: "4 hours"
+    examples:
+      - Elevated error rate (> 1%)
+      - Response time degradation
+      - Resource usage trends
+    notification: ["email"]
+
+  low:
+    description: "Informational, monitor and plan"
+    response_time: "1 day"
+    examples:
+      - Minor performance degradation
+      - Unusual patterns
+      - Approaching limits
+    notification: ["email_daily_digest"]
+
+---
+
+# Alert Runbook Links
+runbook_links:
+  high_cpu: "https://wiki.example.com/runbooks/high-cpu"
+  high_memory: "https://wiki.example.com/runbooks/memory-issues"
+  high_error_rate: "https://wiki.example.com/runbooks/error-investigation"
+  service_down: "https://wiki.example.com/runbooks/service-recovery"
+  slow_response: "https://wiki.example.com/runbooks/performance-tuning"
+
+---
+
+# On-Call Schedule
+on_call_schedule:
+  primary:
+    - name: "DevOps Team Lead"
+      contact: "lead@example.com"
+      phone: "+821012345678"
+      timezone: "Asia/Seoul"
+
+  secondary:
+    - name: "Backend Team"
+      contact: "backend@example.com"
+      escalation_delay: "30 minutes"
+
+  escalation_policy:
+    - level: 1
+      delay: 0
+      notify: ["primary"]
+    - level: 2
+      delay: "15 minutes"
+      notify: ["primary", "secondary"]
+    - level: 3
+      delay: "30 minutes"
+      notify: ["primary", "secondary", "manager"]
