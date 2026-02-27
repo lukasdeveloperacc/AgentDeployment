@@ -1,0 +1,190 @@
+name: GCP Cloud Run Deployment
+
+# 트리거 조건
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/gcp-deploy.yml'
+  workflow_dispatch:  # 수동 실행 가능
+
+# 환경변수 설정
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: asia-northeast3
+  ARTIFACT_REGISTRY_REPO: rag-demo
+  BACKEND_SERVICE: rag-backend
+  FRONTEND_SERVICE: rag-frontend
+
+jobs:
+  # Job 1: 테스트
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install uv
+          uv pip install --system -e ".[dev]"
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          pytest tests/ --verbose --cov=. --cov-report=term-missing
+
+      - name: Run linting
+        run: |
+          cd backend
+          ruff check .
+          black --check .
+
+  # Job 2: 빌드 및 Artifact Registry 푸시
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Workload Identity를 위한 권한
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      - name: Get commit SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build and push backend image
+        id: build-backend
+        env:
+          IMAGE_TAG: ${{ steps.vars.outputs.sha_short }}
+          REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}
+        run: |
+          cd backend
+          docker build -t $REGISTRY/${{ env.BACKEND_SERVICE }}:$IMAGE_TAG .
+          docker tag $REGISTRY/${{ env.BACKEND_SERVICE }}:$IMAGE_TAG $REGISTRY/${{ env.BACKEND_SERVICE }}:latest
+          docker push $REGISTRY/${{ env.BACKEND_SERVICE }}:$IMAGE_TAG
+          docker push $REGISTRY/${{ env.BACKEND_SERVICE }}:latest
+          echo "image=$REGISTRY/${{ env.BACKEND_SERVICE }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build and push frontend image
+        id: build-frontend
+        env:
+          IMAGE_TAG: ${{ steps.vars.outputs.sha_short }}
+          REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}
+        run: |
+          cd frontend
+          docker build -t $REGISTRY/${{ env.FRONTEND_SERVICE }}:$IMAGE_TAG .
+          docker tag $REGISTRY/${{ env.FRONTEND_SERVICE }}:$IMAGE_TAG $REGISTRY/${{ env.FRONTEND_SERVICE }}:latest
+          docker push $REGISTRY/${{ env.FRONTEND_SERVICE }}:$IMAGE_TAG
+          docker push $REGISTRY/${{ env.FRONTEND_SERVICE }}:latest
+          echo "image=$REGISTRY/${{ env.FRONTEND_SERVICE }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # Job 3: Cloud Run 배포
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ steps.deploy-backend.outputs.url }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy backend to Cloud Run
+        id: deploy-backend
+        run: |
+          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
+            --image ${{ needs.build-and-push.outputs.backend-image }} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars "ENVIRONMENT=production,LOG_LEVEL=INFO" \
+            --set-secrets "OPENAI_API_KEY=openai-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest" \
+            --cpu 2 \
+            --memory 2Gi \
+            --min-instances 0 \
+            --max-instances 10 \
+            --timeout 300 \
+            --port 8000
+
+          # Get service URL
+          URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+            --region ${{ env.GCP_REGION }} \
+            --format="value(status.url)")
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Backend deployed at: $URL"
+
+      - name: Deploy frontend to Cloud Run
+        id: deploy-frontend
+        run: |
+          gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
+            --image ${{ needs.build-and-push.outputs.frontend-image }} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 5 \
+            --port 80
+
+          # Get service URL
+          URL=$(gcloud run services describe ${{ env.FRONTEND_SERVICE }} \
+            --region ${{ env.GCP_REGION }} \
+            --format="value(status.url)")
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Frontend deployed at: $URL"
+
+      - name: Wait for services to be ready
+        run: |
+          sleep 30
+          # Health check
+          curl -f ${{ steps.deploy-backend.outputs.url }}/health || exit 1
+          echo "✅ Services are healthy and ready!"
+
+  # Job 4: 배포 알림
+  notify:
+    needs: [test, build-and-push, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check deployment status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi
