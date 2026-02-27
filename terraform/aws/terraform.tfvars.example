@@ -1,0 +1,16 @@
+# Example Terraform Variables File
+# Copy this to terraform.tfvars and fill in your values
+
+aws_region   = "ap-northeast-2"
+project_name = "rag-demo"
+environment  = "dev"
+
+# VPC Configuration
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["ap-northeast-2a", "ap-northeast-2c"]
+public_subnets     = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnets    = ["10.0.11.0/24", "10.0.12.0/24"]
+
+# Secrets (get these ARNs from AWS Secrets Manager)
+openai_secret_arn   = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:prod/openai-api-key-xxxxx"
+pinecone_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:prod/pinecone-api-key-xxxxx"
