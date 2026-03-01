@@ -26,17 +26,15 @@ frontend/
 ### 1. Backend 실행
 ```bash
 cd backend
-uv venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-uv pip install -e .
-uvicorn app:app --reload --port 8000
+uv sync
+uv run uvicorn app:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### 2. Frontend 실행
 ```bash
 cd frontend
 # Live Server 또는 Python HTTP Server 사용
-python -m http.server 3000
+uv run python -m http.server 3000
 ```
 
 ### 3. 브라우저 접속
